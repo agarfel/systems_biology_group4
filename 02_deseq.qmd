@@ -32,8 +32,21 @@ all(sample_metadata_Spinal$sample_id_spinal == sample_ids_spinal)
 ### Load deseq
 
 ```{r}
+library(DESeq2)
 
+dds_ocular <- DESeqDataSetFromMatrix(countData = geneCountMatrix_Ocular[,c(-1)],
+  colData = sample_metadata_Ocular,
+  design = ~ mutation)
 
+dds_spinal <- DESeqDataSetFromMatrix(countData = geneCountMatrix_Spinal[,c(-1)],
+  colData = sample_metadata_Spinal,
+  design = ~ mutation)
+```
 
+### PCA
 
+```{r}
+plotPCA(rlog(dds_ocular), intgroup=c("mutation"))
+
+plotPCA(rlog(dds_spinal), intgroup=c("mutation"))
 ```
