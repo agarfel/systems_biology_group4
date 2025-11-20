@@ -1,0 +1,11 @@
+---
+title: "02_deseq.qmd"
+format: html
+editor: visual
+---
+
+```{r}
+
+
+
+```
