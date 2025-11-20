@@ -46,6 +46,9 @@ isoInfo <- read_rds(
   'Homo_sapiens.GRCh38.107.chr_patch_hapl_scaff_tx_info.Rds'
   )
 )
+
+isoInfo <- isoInfo[ match(isoCm_Ocular$transcript_id, isoInfo$transcript_id), ]
+
 ```
 
 **Get Sample Metadata**
