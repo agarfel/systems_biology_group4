@@ -50,3 +50,26 @@ plotPCA(rlog(dds_ocular), intgroup=c("mutation"))
 
 plotPCA(rlog(dds_spinal), intgroup=c("mutation"))
 ```
+
+### Testing for DE
+
+```{r}
+dds_ocular <- DESeq(dds_ocular)
+dds_spinal <- DESeq(dds_spinal)
+```
+
+```{r}
+res_ocular <- results(dds_ocular)
+res_spinal <- results(dds_spinal)
+
+res_ocular
+res_spinal
+```
+
+```{r}
+n_sig_ocular <- sum(res_ocular$padj < 0.05, na.rm = TRUE)
+n_sig_spinal <- sum(res_spinal$padj < 0.05, na.rm = TRUE)
+
+n_sig_ocular
+n_sig_spinal
+```
