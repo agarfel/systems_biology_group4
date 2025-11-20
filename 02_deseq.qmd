@@ -7,25 +7,36 @@ editor: visual
 ### Load data
 
 ```{r}
-
 geneCountMatrix = read.csv("data/geneCountMatrix.csv")
 sample_metadata = read.csv("data/sampleMetadata.csv")
-
 ```
 
 ### Inspect data
 
 ```{r}
-
 nrow(geneCountMatrix)
-
 nrow(geneCountMatrix)
 
 colnames_count_matrix = colnames(geneCountMatrix)
 sample_ids <- colnames_count_matrix[-c(1)]
 
 all(sample_metadata$sample_id == sample_ids)
+```
 
+### Split dataset
+
+```{r}
+Ocular_Motor_Neuron <- sample_metadata |>
+  filter(tissue == "Ocular Motor Neuron")
+
+Spinal_Motor_Neuron <- sample_metadata |>
+  filter(tissue == "Spinal Motor Neuron")
+```
+
+```{r}
+Ocular_geneCount <- geneCountMatrix[,c(1:7)]
+
+Spinal_geneCount <- geneCountMatrix[,c(1, 8:13)]
 ```
 
 ### Load deseq
