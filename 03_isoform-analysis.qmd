@@ -1,0 +1,68 @@
+---
+title: "03_isoform-analysis"
+format: html
+---
+
+### Load Libraries
+
+```{r}
+library(DEXSeq)
+```
+
+# Ocular Motor Neurons
+
+### Load Data
+
+```{r}
+isoCm_Ocular <- read.csv("data/OcularIsoformCountMatrix.csv", row.names = 1)
+# isoCm_Ocular <- isoCm_Ocular |> rownames_to_column(var = "transcript_id")
+
+Ocular_Metadata <- read.csv("data/OcularSampleMetadata.csv")
+IsoformInfo <- read.csv("data/isoformInfo.csv")
+```
+
+### Creating the DEXSeqDataSet object
+
+```{r}
+dxdSubset <- DEXSeqDataSet(
+    countData = isoCm_Ocular,
+    sampleData = Ocular_Metadata,
+    design= ~ sample_id + exon + mutation,
+    featureID = IsoformInfo$transcript_id,
+    groupID = IsoformInfo$gene_id
+  )
+```
+
+### Testing for Differential Isoform Usage
+
+```{r}
+dxdSubset <- estimateSizeFactors(dxdSubset)
+```
+
+```{r}
+dxdSubset <- estimateDispersions(dxdSubset)
+```
+
+```{r}
+dxdSubset <- testForDEU(
+    dxdSubset,
+    fullModel = ~ sample + exon + mutation,
+    reducedModel = ~ sample + exon 
+  )
+```
+
+```{r}
+dxdSubset <- estimateExonFoldChanges(dxdSubset, fitExpToVar = "mutation")
+```
+
+```{r}
+dxdResult <- DEXSeqResults(dxdSubset)
+```
+
+```{r}
+alpha <- 0.05
+# Significant isoforms (rows)
+sig_iso <- dxdResult[!is.na(dxdResult$padj) & dxdResult$padj < alpha, ]
+n_sig_isoforms <- nrow(sig_iso)
+n_sig_isoform
+```
