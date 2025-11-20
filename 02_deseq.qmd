@@ -4,7 +4,34 @@ format: html
 editor: visual
 ---
 
+### Load data
+
 ```{r}
+
+geneCountMatrix = read.csv("data/geneCountMatrix.csv")
+sample_metadata = read.csv("data/sampleMetadata.csv")
+
+```
+
+### Inspect data
+
+```{r}
+
+nrow(geneCountMatrix)
+
+nrow(geneCountMatrix)
+
+colnames_count_matrix = colnames(geneCountMatrix)
+sample_ids <- colnames_count_matrix[-c(1)]
+
+all(sample_metadata$sample_id == sample_ids)
+
+```
+
+### Load deseq
+
+```{r}
+
 
 
 
