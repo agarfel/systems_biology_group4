@@ -21,6 +21,8 @@ isoCm <- loadIsoformCountMatrix("GSE132972")
 
 ```{r}
 geneCm <- extractGeneCountMatrixFromIsoCounts(isoCm)
+geneCm <- geneCm %>%
+  rownames_to_column(var = "gene_id")
 ```
 
 ```{r}
@@ -46,11 +48,13 @@ sampleMd <- data.frame(
 
 ```{r}
 isoCdf <- data.frame(isoCm)
+isoCdf <- isoCdf %>%
+  rownames_to_column(var = "transcript_id")
 ```
 
 ```{r}
-# write_csv(isoCdf, "data/isoformCountMatrix.csv")
-# write_csv(geneCm, "data/geneCountMatrix.csv")
-# write_csv(isoInfo, "data/isoformInfo.csv")
-# write_csv(sampleMd, "data/sampleMetadata.csv")
+write_csv(isoCdf, "data/isoformCountMatrix.csv")
+write_csv(geneCm, "data/geneCountMatrix.csv")
+write_csv(isoInfo, "data/isoformInfo.csv")
+write_csv(sampleMd, "data/sampleMetadata.csv")
 ```
