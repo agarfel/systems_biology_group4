@@ -1,0 +1,56 @@
+---
+title: "01_load"
+format: html
+---
+
+# Load Data for Analysis
+
+**Load Provided Functions**
+
+```{r}
+load(file='/home/projects/22140/exam_data/exam_functions.Rdata')
+```
+
+**Load Isoform Count Matrix**
+
+```{r}
+isoCm <- loadIsoformCountMatrix("GSE132972")
+```
+
+**Obtain Gene Count Matrix**
+
+```{r}
+geneCm <- extractGeneCountMatrixFromIsoCounts(isoCm)
+```
+
+```{r}
+isoInfo <- read_rds(
+paste0(
+'/home/projects/22140/exam_data/',
+'Homo_sapiens.GRCh38.107.chr_patch_hapl_scaff_tx_info.Rds'
+)
+)
+```
+
+**Get Sample Metadata**
+
+```{r}
+sampleMd <- data.frame(
+  sample_id=c("GSM3897649","GSM3897650","GSM3897651","GSM3897652","GSM3897653","GSM3897654","GSM3897655", "GSM3897656", "GSM3897657","GSM3897658","GSM3897659","GSM3897660"),
+  tissue=c("Ocular Motor Neuron", "Ocular Motor Neuron","Ocular Motor Neuron","Ocular Motor Neuron","Ocular Motor Neuron","Ocular Motor Neuron","Spinal Motor Neuron","Spinal Motor Neuron","Spinal Motor Neuron","Spinal Motor Neuron","Spinal Motor Neuron","Spinal Motor Neuron"),
+  mutation=c("SOD1","SOD1","SOD1","C9ORF72","C9ORF72","C9ORF72","SOD1","SOD1","SOD1","C9ORF72","C9ORF72","C9ORF72")
+  )
+```
+
+## Save Data
+
+```{r}
+isoCdf <- data.frame(isoCm)
+```
+
+```{r}
+# write_csv(isoCdf, "data/isoformCountMatrix.csv")
+# write_csv(geneCm, "data/geneCountMatrix.csv")
+# write_csv(isoInfo, "data/isoformInfo.csv")
+# write_csv(sampleMd, "data/sampleMetadata.csv")
+```
