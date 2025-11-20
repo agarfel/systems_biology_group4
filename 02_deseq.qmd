@@ -73,3 +73,32 @@ n_sig_spinal <- sum(res_spinal$padj < 0.05, na.rm = TRUE)
 n_sig_ocular
 n_sig_spinal
 ```
+
+### FCS
+
+```{r}
+library(fgsea)
+library(msigdbr)
+
+BP_df = msigdbr(species = "human", category = "C5", subcategory = "BP")
+BP_list = split(BP_df$ensembl_gene, BP_df$gs_name)
+```
+
+```{r}
+
+#res_ocular <- results(dds_ocular,
+#  contrast = c("mutation","SOD1","C90RF72"))
+
+myStats_ocular <- res_ocular[,"stat"]
+myStats_spinal <- res_spinal[,"stat"]
+
+names(myStats_ocular) <- rownames(res_ocular)
+names(myStats_spinal) <- rownames(res_spinal)
+
+# Remove the ensembl version in the names
+clean_names <- sub("\\.\\d+$", "", names(myStats_ocular))
+names(myStats_ocular) <- clean_names
+myStats_ocular <- myStats_ocular[!is.na(myStats_ocular)]
+myStats_ocular <- sort(myStats_ocular, decreasing = TRUE)
+
+```
