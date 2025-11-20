@@ -7,8 +7,8 @@ editor: visual
 ### Load data
 
 ```{r}
-geneCountMatrix_Ocular = read.csv("data/OcularGeneCountMatrix.csv")
-geneCountMatrix_Spinal = read.csv("data/SpinalGeneCountMatrix.csv")
+geneCountMatrix_Ocular = read.csv("data/OcularGeneCountMatrix.csv", row.names = 1)
+geneCountMatrix_Spinal = read.csv("data/SpinalGeneCountMatrix.csv", row.names = 1)
 
 sample_metadata_Ocular = read.csv("data/OcularSampleMetadata.csv")
 sample_metadata_Spinal = read.csv("data/SpinalSampleMetadata.csv")
@@ -22,8 +22,8 @@ nrow(geneCountMatrix_Spinal)
 
 colnames_count_matrix_ocular = colnames(geneCountMatrix_Ocular)
 colnames_count_matrix_spinal = colnames(geneCountMatrix_Spinal)
-sample_ids_ocular <- colnames_count_matrix_ocular[-c(1)]
-sample_ids_spinal <- colnames_count_matrix_spinal[-c(1)]
+sample_ids_ocular <- colnames_count_matrix_ocular
+sample_ids_spinal <- colnames_count_matrix_spinal
 
 all(sample_metadata_Ocular$sample_id_ocular == sample_ids_ocular)
 all(sample_metadata_Spinal$sample_id_spinal == sample_ids_spinal)
@@ -34,11 +34,11 @@ all(sample_metadata_Spinal$sample_id_spinal == sample_ids_spinal)
 ```{r}
 library(DESeq2)
 
-dds_ocular <- DESeqDataSetFromMatrix(countData = geneCountMatrix_Ocular[,c(-1)],
+dds_ocular <- DESeqDataSetFromMatrix(countData = geneCountMatrix_Ocular,
   colData = sample_metadata_Ocular,
   design = ~ mutation)
 
-dds_spinal <- DESeqDataSetFromMatrix(countData = geneCountMatrix_Spinal[,c(-1)],
+dds_spinal <- DESeqDataSetFromMatrix(countData = geneCountMatrix_Spinal,
   colData = sample_metadata_Spinal,
   design = ~ mutation)
 ```
@@ -76,7 +76,7 @@ n_sig_ocular
 n_sig_spinal
 ```
 
-### FCS
+### FCS as a directional enrichment analysis
 
 ```{r}
 library(fgsea)
@@ -87,10 +87,6 @@ BP_list = split(BP_df$ensembl_gene, BP_df$gs_name)
 ```
 
 ```{r}
-
-#res_ocular <- results(dds_ocular,
-#  contrast = c("mutation","SOD1","C90RF72"))
-
 myStats_ocular <- res_ocular[,"stat"]
 myStats_spinal <- res_spinal[,"stat"]
 
@@ -103,9 +99,6 @@ clean_names_spinal <- sub("\\.\\d+$", "", names(myStats_spinal))
 
 names(myStats_ocular) <- clean_names_ocular
 names(myStats_spinal) <- clean_names_spinal
-
-myStats_ocular <- myStats_ocular[!is.na(names(myStats_ocular))]
-myStats_spinal <- myStats_spinal[!is.na(names(myStats_spinal))]
 
 myStats_ocular <- myStats_ocular[!is.na(myStats_ocular)]
 myStats_spinal <- myStats_spinal[!is.na(myStats_spinal)]
@@ -132,4 +125,90 @@ fg_sig_spinal <- fg_spinal %>%
 
 nrow(fg_sig_ocular)
 nrow(fg_sig_spinal)
+```
+
+```{r}
+fg_sig_ocular[1:10]
+fg_sig_spinal[1:10]
+```
+
+```{r}
+chosen_pathway <- fg_sig_ocular$pathway[1]
+plotEnrichment(BP_list[[chosen_pathway]], myStats_ocular) +
+ggplot2::labs(title = paste0("Enrichment: ", chosen_pathway))
+
+chosen_pathway <- fg_sig_spinal$pathway[1]
+plotEnrichment(BP_list[[chosen_pathway]], myStats_spinal) +
+ggplot2::labs(title = paste0("Enrichment: ", chosen_pathway))
+```
+
+```{r}
+leading <- fg_sig_ocular$leadingEdge[[1]]
+first_genes <- head(leading, 3)
+first_genes
+
+leading <- fg_sig_spinal$leadingEdge[[1]]
+first_genes <- head(leading, 3)
+first_genes
+```
+
+### FCS as a non-directional enrichment analysis
+
+```{r}
+stats_abs_ocular <- abs(myStats_ocular)
+fg_nondir_ocular <- fgseaMultilevel(pathways = BP_list, stats = stats_abs_ocular,
+minSize = 15, maxSize = 500, scoreType = "pos")
+
+stats_abs_spinal <- abs(myStats_spinal)
+fg_nondir_spinal <- fgseaMultilevel(pathways = BP_list, stats = stats_abs_spinal,
+minSize = 15, maxSize = 500, scoreType = "pos")
+```
+
+```{r}
+fg_nondir_ocular <- fg_nondir_ocular[order(fg_nondir_ocular$padj), ]
+fg_nondir_spinal <- fg_nondir_spinal[order(fg_nondir_spinal$padj), ]
+
+fg_nondir_ocular[1:10]
+fg_nondir_ocular[1:10]
+```
+
+```{r}
+fg_volcano_ocular <- fg_ocular %>%
+  mutate(sig = padj < 0.05, mlog10padj = -log10(padj))
+to_label_ocular <- fg_volcano_ocular %>% arrange(padj) %>% slice_head(n = 10)
+
+fg_volcano_spinal <- fg_spinal %>%
+  mutate(sig = padj < 0.05, mlog10padj = -log10(padj))
+to_label_spinal <- fg_volcano_spinal %>% arrange(padj) %>% slice_head(n = 10)
+```
+
+```{r}
+library(ggrepel)
+
+ggplot(fg_volcano_ocular, aes(x = NES, y = mlog10padj, color = sig)) +
+  geom_point(alpha = 0.8) +
+  geom_hline(yintercept = -log10(0.05), linetype = 2) +
+  geom_text_repel(data = to_label_ocular,
+  aes(label = str_trunc(pathway, 50)), max.overlaps = 30, size = 3) +
+  scale_color_manual(values = c("FALSE" = "grey70", "TRUE" = "#d62728"),
+  labels = c("n.s.", "< 0.05")) +
+  labs(x = "NES", 
+       y = expression(-log[10](padj)), 
+       color = "Significant", 
+       title = "Volcano plot of gene-set enrichment") +
+  theme_minimal(base_size = 11)
+
+
+ggplot(fg_volcano_spinal, aes(x = NES, y = mlog10padj, color = sig)) +
+  geom_point(alpha = 0.8) +
+  geom_hline(yintercept = -log10(0.05), linetype = 2) +
+  geom_text_repel(data = to_label_spinal,
+  aes(label = str_trunc(pathway, 50)), max.overlaps = 30, size = 3) +
+  scale_color_manual(values = c("FALSE" = "grey70", "TRUE" = "#d62728"),
+  labels = c("n.s.", "< 0.05")) +
+  labs(x = "NES", 
+       y = expression(-log[10](padj)), 
+       color = "Significant", 
+       title = "Volcano plot of gene-set enrichment") +
+  theme_minimal(base_size = 11)
 ```
