@@ -198,7 +198,7 @@ ggplot(fg_volcano_ocular, aes(x = NES, y = mlog10padj, color = sig)) +
   labs(x = "NES", 
        y = expression(-log[10](padj)), 
        color = "Significant", 
-       title = "Volcano plot of gene-set enrichment") +
+       title = "Volcano plot of gene-set enrichment, Ocular") +
   theme_minimal(base_size = 11)
 
 
@@ -212,6 +212,6 @@ ggplot(fg_volcano_spinal, aes(x = NES, y = mlog10padj, color = sig)) +
   labs(x = "NES", 
        y = expression(-log[10](padj)), 
        color = "Significant", 
-       title = "Volcano plot of gene-set enrichment") +
+       title = "Volcano plot of gene-set enrichment, Spinal") +
   theme_minimal(base_size = 11)
 ```
