@@ -1,0 +1,82 @@
+---
+title: "DEXSeq Isoform Analysis"
+format: html
+---
+
+### Load Libraries
+
+```{r}
+#| message: false
+library(DEXSeq)
+library(tidyverse)
+```
+
+```{r}
+dexseq_analysis <- function(isoCm, Metadata, IsoformInfo){
+  n_samples <- ncol(isoCm)
+  isoCm <- isoCm[rowSums(isoCm >= 10) >= (0.5 * n_samples), ]
+  isoforms <- rownames(isoCm)
+  IsoformInfo <- IsoformInfo |> filter(transcript_id %in% isoforms)
+  IsoformInfo <- IsoformInfo |> distinct(transcript_id, .keep_all = TRUE)
+  IsoformInfo <- IsoformInfo[match(rownames(isoCm),
+                                   IsoformInfo$transcript_id),]
+  stopifnot( all(rownames(isoCm) == IsoformInfo$transcript_id) )
+  
+  
+  Metadata$mutation <- factor(Metadata$mutation)
+  
+  dxdSubset <- DEXSeqDataSet(
+      countData = isoCm,
+      sampleData = Metadata,
+      design = ~ mutation + exon + exon:mutation,
+      featureID = IsoformInfo$transcript_id,
+      groupID = IsoformInfo$gene_id
+  )
+  
+  dxdSubset <- estimateSizeFactors(dxdSubset)
+  dxdSubset <- estimateDispersions(dxdSubset)
+  dxdSubset <- testForDEU(
+      dxdSubset,
+      fullModel = ~ exon + exon:mutation,
+      reducedModel = ~ exon 
+    )
+  dxdSubset <- estimateExonFoldChanges(dxdSubset, fitExpToVar = "mutation")
+  dxdResult <- DEXSeqResults(dxdSubset)
+  return(dxdResult)
+}
+```
+
+# Ocular Motor Neurons
+
+```{r}
+isoCm_Ocular <- read.csv("data/OcularIsoformCountMatrix.csv", row.names = 1)
+Ocular_Metadata <- read.csv("data/OcularSampleMetadata.csv", row.names = 1)
+IsoformInfo <- read.csv("data/isoformInfo.csv")
+
+OcularResult <- dexseq_analysis(isoCm_Ocular, Ocular_Metadata, IsoformInfo)
+```
+
+# Spinal Motor Neurons
+
+### Load Data
+
+```{r}
+isoCm_Spinal <- read.csv("data/SpinalIsoformCountMatrix.csv", row.names = 1)
+Spinal_Metadata <- read.csv("data/SpinalSampleMetadata.csv", row.names = 1)
+IsoformInfo <- read.csv("data/isoformInfo.csv")
+SpinalResult <- dexseq_analysis(isoCm_Spinal, Spinal_Metadata, IsoformInfo)
+
+```
+
+```{r}
+
+iso_id_padj_value_ocular = data.frame("transcript_id" = OcularResult$featureID,
+                                       "padj" = OcularResult$padj)
+
+iso_id_padj_value_spinal = data.frame("transcript_id" = SpinalResult$featureID,
+                                       "padj" = dxdResultSpinal$padj)
+
+write.csv(iso_id_padj_value_ocular, "data/iso_id_padj_value_ocular.csv")
+write.csv(iso_id_padj_value_spinal, "data/iso_id_padj_value_spinal.csv")
+```
+
