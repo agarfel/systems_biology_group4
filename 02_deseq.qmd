@@ -115,6 +115,8 @@ fg_spinal <- fgseaMultilevel(pathways = BP_list, stats = myStats_spinal,
 ```
 
 ```{r}
+library(dplyr)
+
 fg_sig_ocular <- fg_ocular %>%
   arrange(padj) %>%
   filter(padj < 0.05)
@@ -184,6 +186,7 @@ to_label_spinal <- fg_volcano_spinal %>% arrange(padj) %>% slice_head(n = 10)
 
 ```{r}
 library(ggrepel)
+library(stringr)
 
 ggplot(fg_volcano_ocular, aes(x = NES, y = mlog10padj, color = sig)) +
   geom_point(alpha = 0.8) +
