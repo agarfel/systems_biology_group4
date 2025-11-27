@@ -66,6 +66,15 @@ res_spinal <- results(dds_spinal,
 
 res_ocular
 res_spinal
+
+gene_id_padj_value_ocular = data.frame("gene_id" = rownames(geneCountMatrix_Ocular),
+                                       "padj" = res_ocular$padj)
+
+gene_id_padj_value_spinal = data.frame("gene_id" = rownames(geneCountMatrix_Spinal),
+                                       "padj" = res_spinal$padj)
+
+write_csv(gene_id_padj_value_ocular, "data/gene_id_padj_value_ocular.csv")
+write_csv(gene_id_padj_value_spinal, "data/gene_id_padj_value_spinal.csv")
 ```
 
 ```{r}
