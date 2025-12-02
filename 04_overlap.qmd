@@ -1,0 +1,63 @@
+---
+title: "04_overlap"
+format: html
+---
+
+## Load Libraries
+
+```{r}
+
+```
+
+## Load Data
+
+```{r}
+iso_Ocular <- read.csv("data/iso_id_padj_value_ocular.csv", row.names = 1)
+iso_Spinal <- read.csv("data/iso_id_padj_value_spinal.csv", row.names = 1)
+```
+
+
+## Obtain Significant Sets
+
+```{r}
+# ocular_genes <-
+# spinal_genes <-
+ocular_iso <- (iso_Ocular |> filter(!is.na(padj) & padj <0.05))$transcript_id
+spinal_iso <- (iso_Spinal |> filter(!is.na(padj) & padj <0.05))$transcript_id
+```
+
+
+# Gene Analysis
+
+```{r}
+gene_unique_ocular <- setdiff(ocular_genes, spinal_genes)
+gene_unique_spinal <- setdiff(spinal_genes, ocular_genes)
+gene_intersection <- intersect(ocular_genes, spinal_genes)
+```
+
+# Isoform Analysis
+
+```{r}
+iso_unique_ocular <- setdiff(ocular_iso, spinal_iso)
+iso_unique_spinal <- setdiff(spinal_iso, ocular_iso)
+iso_intersection <- intersect(ocular_iso, spinal_iso)
+```
+
+
+
+# Isoform - Gene Comparison
+
+```{r}
+ocular_iso <- ocular_iso %>%
+  left_join(transcriptInfo %>% select(transcript_id, gene_id),
+            by = "transcript_id")
+
+spinal_iso <- ocular_iso %>%
+  left_join(transcriptInfo %>% select(transcript_id, gene_id),
+            by = "transcript_id")
+```
+
+```{r}
+
+```
+
