@@ -1,0 +1,132 @@
+---
+title: "05_pval_integration"
+format: html
+---
+
+```{r}
+
+library(tidyverse)
+library(fgsea)
+library(msigdbr)
+load(file='/home/projects/22140/exercise7_data.Rdata')
+
+```
+
+```{r}
+
+gene_id_padj_value_ocular = read.csv("data/gene_id_padj_value_ocular.csv")
+gene_id_padj_value_spinal = read.csv("data/gene_id_padj_value_spinal.csv")
+
+iso_id_padj_value_ocular = read.csv("data/iso_id_padj_value_ocular.csv")
+iso_id_padj_value_spinal = read.csv("data/iso_id_padj_value_spinal.csv")
+
+```
+
+```{r}
+
+# mapping gene ids to isoform ids
+gene_id_isoform_id = read.csv("data/isoformInfo.csv")
+gene_id_isoform_id = gene_id_isoform_id[, c("gene_id", "transcript_id")]
+
+```
+
+```{r}
+
+# mapping pvalues between gene ids and isoform ids
+ocular_df <- gene_id_isoform_id %>%
+  select(gene_id, transcript_id) %>%
+  left_join(gene_id_padj_value_ocular, by = "gene_id") %>%
+  left_join(iso_id_padj_value_ocular, by = "transcript_id")
+
+ocular_df <- ocular_df %>%
+  distinct(gene_id, .keep_all = TRUE) %>%
+  select(gene_id, padj.x, padj.y) %>%
+  rename(
+        pvalue_deseq2 = padj.x,
+        pvalue_dexseq = padj.y
+        ) %>%
+  mutate(across(everything(), ~ replace_na(.x, 0)))
+
+
+spinal_df <- gene_id_isoform_id %>%
+  select(gene_id, transcript_id) %>%
+  left_join(gene_id_padj_value_spinal, by = "gene_id") %>%
+  left_join(iso_id_padj_value_spinal, by = "transcript_id")
+
+spinal_df <- spinal_df %>%
+  distinct(gene_id, .keep_all = TRUE) %>%
+  select(gene_id, padj.x, padj.y) %>%
+  rename(
+        pvalue_deseq2 = padj.x,
+        pvalue_dexseq = padj.y
+        ) %>%
+  #
+  #
+  #
+  # this removes all NAs check it again if its correct
+  mutate(across(everything(), ~ replace_na(.x, 0)))
+
+```
+
+```{r}
+
+ocular_df_augmented <- ocular_df |>
+  rowwise() |>
+  mutate(
+  joint_pval_fisher = metap::sumlog(c(pvalue_deseq2, pvalue_dexseq))$p
+  ) |>
+  ungroup()
+
+
+spinal_df_augmented <- spinal_df |>
+  rowwise() |>
+  mutate(
+  joint_pval_fisher = metap::sumlog(c(pvalue_deseq2, pvalue_dexseq))$p
+  ) |>
+  ungroup()
+
+```
+
+```{r}
+
+ocular_df_augmented <- ocular_df_augmented |>
+  mutate(
+  padj_deseq2 = p.adjust(pvalue_deseq2, method = "BH"),
+  padj_dexseq = p.adjust(pvalue_dexseq, method = "BH"),
+  padj_joint = p.adjust(joint_pval_fisher, method = "BH"),
+  sig_deseq2 = padj_deseq2 < 0.05,
+  sig_dexseq = padj_dexseq < 0.05,
+  sig_joint = padj_joint < 0.05
+  )
+
+
+spinal_df_augmented <- spinal_df_augmented |>
+  mutate(
+  padj_deseq2 = p.adjust(pvalue_deseq2, method = "BH"),
+  padj_dexseq = p.adjust(pvalue_dexseq, method = "BH"),
+  padj_joint = p.adjust(joint_pval_fisher, method = "BH"),
+  sig_deseq2 = padj_deseq2 < 0.05,
+  sig_dexseq = padj_dexseq < 0.05,
+  sig_joint = padj_joint < 0.05
+  )
+
+```
+
+```{r}
+
+ocular_sig_counts <- c(
+  DESeq2 = sum(ocular_df_augmented$sig_deseq2),
+  DEXSeq = sum(ocular_df_augmented$sig_dexseq),
+  Joint = sum(ocular_df_augmented$sig_joint)
+  )
+ocular_sig_counts
+
+
+spinal_sig_counts <- c(
+  DESeq2 = sum(spinal_df_augmented$sig_deseq2),
+  DEXSeq = sum(spinal_df_augmented$sig_dexseq),
+  Joint = sum(spinal_df_augmented$sig_joint)
+  )
+spinal_sig_counts
+
+```
