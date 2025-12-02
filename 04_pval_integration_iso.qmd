@@ -1,0 +1,88 @@
+---
+title: "04_pval_integration_iso"
+format: html
+editor: visual
+---
+
+## 
+
+```{r}
+library(tidyverse)
+library(dplyr)
+
+```
+
+## Ocular 
+
+```{r}
+
+ocular_data <- read_csv("data/iso_id_padj_value_ocular.csv")
+
+dexseqResultGeneOcular <- ocular_data %>%
+  inner_join(IsoformInfo,by = "transcript_id") %>%
+  as_tibble() %>%
+  
+  filter(!is.na(padj)) %>%
+  
+  dplyr::select(
+    gene_id,             
+    isoform_id = transcript_id, 
+    padj               
+  ) %>%
+  
+  group_by(gene_id) %>%
+  
+  slice_min(
+    order_by = padj,
+    n = 1,
+    with_ties = FALSE
+  ) %>%
+  
+  ungroup() %>%
+  
+  mutate(
+    padj = p.adjust(padj, method = 'fdr')
+  )
+
+print(dexseqResultGeneOcular)
+
+```
+
+## Spinal
+
+```{r}
+spinal_data <- read_csv("data/iso_id_padj_value_spinal.csv")
+
+dexseqResultGeneSpinal <- spinal_data %>%
+  inner_join(IsoformInfo,by = "transcript_id") %>%
+  as_tibble() %>%
+  
+  filter(!is.na(padj)) %>%
+  
+  dplyr::select(
+    gene_id,             
+    isoform_id = transcript_id, 
+    padj               
+  ) %>%
+  
+  group_by(gene_id) %>%
+  
+  slice_min(
+    order_by = padj,
+    n = 1,
+    with_ties = FALSE
+  ) %>%
+  
+  ungroup() %>%
+  
+  mutate(
+    padj = p.adjust(padj, method = 'fdr')
+  )
+print(dexseqResultGeneSpinal)
+```
+
+```{r}
+write_csv(dexseqResultGeneOcular, "data/ocular_dexseq_gene_results.csv")
+
+write_csv(dexseqResultGeneSpinal, "data/spinal_dexseq_gene_results.csv")
+```
