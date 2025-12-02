@@ -4,19 +4,19 @@ format: html
 editor: visual
 ---
 
-## 
+## Load Libraries
 
 ```{r}
 library(tidyverse)
 library(dplyr)
-
 ```
 
-## Ocular 
+## Ocular
 
 ```{r}
 
 ocular_data <- read_csv("data/iso_id_padj_value_ocular.csv")
+IsoformInfo <- read.csv("data/isoformInfo.csv")
 
 dexseqResultGeneOcular <- ocular_data %>%
   inner_join(IsoformInfo,by = "transcript_id") %>%

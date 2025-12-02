@@ -1,0 +1,9 @@
+INFO [2025-12-02 15:57:11] $x
+INFO [2025-12-02 15:57:11] list(ocular_genes, spinal_genes, ocular_iso_g, spinal_iso_g)
+INFO [2025-12-02 15:57:11] 
+INFO [2025-12-02 15:57:11] $category.names
+INFO [2025-12-02 15:57:11] c("Ocular G", "Spinal G", "Ocular I", "Spinal I")
+INFO [2025-12-02 15:57:11] 
+INFO [2025-12-02 15:57:11] $filename
+INFO [2025-12-02 15:57:11] [1] "results/isoform-gene_venn_diagramm.png"
+INFO [2025-12-02 15:57:11] 

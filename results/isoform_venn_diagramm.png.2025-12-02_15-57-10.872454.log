@@ -1,0 +1,9 @@
+INFO [2025-12-02 15:57:10] $x
+INFO [2025-12-02 15:57:10] list(ocular_iso, spinal_iso)
+INFO [2025-12-02 15:57:10] 
+INFO [2025-12-02 15:57:10] $category.names
+INFO [2025-12-02 15:57:10] c("Ocular", "Spinal")
+INFO [2025-12-02 15:57:10] 
+INFO [2025-12-02 15:57:10] $filename
+INFO [2025-12-02 15:57:10] [1] "results/isoform_venn_diagramm.png"
+INFO [2025-12-02 15:57:10] 

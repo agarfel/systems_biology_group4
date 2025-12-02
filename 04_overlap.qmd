@@ -1,12 +1,15 @@
 ---
 title: "04_overlap"
-format: html
+format:
+  html:
+    self-contained: true 
 ---
 
 ## Load Libraries
 
 ```{r}
-
+library(VennDiagram)
+library(dplyr)
 ```
 
 ## Load Data
@@ -14,50 +17,68 @@ format: html
 ```{r}
 iso_Ocular <- read.csv("data/iso_id_padj_value_ocular.csv", row.names = 1)
 iso_Spinal <- read.csv("data/iso_id_padj_value_spinal.csv", row.names = 1)
+gene_Ocular <- read.csv("data/gene_id_padj_value_ocular.csv", row.names = 1)
+gene_Spinal <- read.csv("data/gene_id_padj_value_spinal.csv", row.names = 1)
+
+IsoformInfo <- read.csv("data/isoformInfo.csv")
+```
+
+## Add gene column to isoforms
+
+```{r}
+iso_Ocular <- iso_Ocular |> 
+  left_join(IsoformInfo |>  select(transcript_id, gene_id),
+            by = "transcript_id")
+
+iso_Spinal <- iso_Spinal  |> 
+  left_join(IsoformInfo  |>  select(transcript_id, gene_id),
+            by = "transcript_id")
 ```
 
 
 ## Obtain Significant Sets
 
 ```{r}
-# ocular_genes <-
-# spinal_genes <-
-ocular_iso <- (iso_Ocular |> filter(!is.na(padj) & padj <0.05))$transcript_id
-spinal_iso <- (iso_Spinal |> filter(!is.na(padj) & padj <0.05))$transcript_id
+iso_Ocular <- iso_Ocular |> filter(!is.na(padj) & padj <0.05)
+iso_Spinal <- iso_Spinal |> filter(!is.na(padj) & padj <0.05)
+
+ocular_genes <- gene_Ocular |> filter(!is.na(padj) & padj <0.05) |> row.names()
+spinal_genes <- gene_Spinal |> filter(!is.na(padj) & padj <0.05) |> row.names()
+
+spinal_iso <- iso_Spinal |> pull(transcript_id)
+ocular_iso <- iso_Ocular |> pull(transcript_id)
+
+spinal_iso_g <- iso_Spinal |> pull(gene_id)
+ocular_iso_g <- iso_Ocular |> pull(gene_id)
 ```
 
-
-# Gene Analysis
+# Generate Venn Diagrams
 
 ```{r}
-gene_unique_ocular <- setdiff(ocular_genes, spinal_genes)
-gene_unique_spinal <- setdiff(spinal_genes, ocular_genes)
-gene_intersection <- intersect(ocular_genes, spinal_genes)
+venn.diagram(
+  x = list(ocular_iso, spinal_iso),
+  category.names = c("Ocular" , "Spinal"),
+  filename = 'results/isoform_venn_diagramm.png'
+)
+
+venn.diagram(
+  x = list(ocular_genes, spinal_genes),
+  category.names = c("Ocular" , "Spinal"),
+  filename = 'results/gene_venn_diagramm.png'
+)
+
+venn.diagram(
+  x = list(ocular_genes, spinal_genes, ocular_iso_g, spinal_iso_g),
+  category.names = c("Ocular G" , "Spinal G", "Ocular I", "Spinal I"),
+  filename = 'results/isoform-gene_venn_diagramm.png'
+)
 ```
 
-# Isoform Analysis
+### Isoform Venn Diagram
+![Isoform Venn Diagram](results/isoform_venn_diagramm.png)
+### Gene Venn Diagram
+![Gene Venn Diagram](results/gene_venn_diagramm.png)
 
-```{r}
-iso_unique_ocular <- setdiff(ocular_iso, spinal_iso)
-iso_unique_spinal <- setdiff(spinal_iso, ocular_iso)
-iso_intersection <- intersect(ocular_iso, spinal_iso)
-```
-
-
-
-# Isoform - Gene Comparison
-
-```{r}
-ocular_iso <- ocular_iso %>%
-  left_join(transcriptInfo %>% select(transcript_id, gene_id),
-            by = "transcript_id")
-
-spinal_iso <- ocular_iso %>%
-  left_join(transcriptInfo %>% select(transcript_id, gene_id),
-            by = "transcript_id")
-```
-
-```{r}
-
-```
+### Isoform + Gene Venn Diagram
+![Isoform + Gene Venn Diagram](results/isoform-gene_venn_diagramm.png)
 
