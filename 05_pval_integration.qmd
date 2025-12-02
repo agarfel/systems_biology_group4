@@ -97,7 +97,9 @@ ocular_df_augmented <- ocular_df_augmented |>
   sig_deseq2 = padj_deseq2 < 0.05,
   sig_dexseq = padj_dexseq < 0.05,
   sig_joint = padj_joint < 0.05
-  )
+  ) %>%
+  mutate(sig_joint = replace_na(sig_joint, FALSE))
+
 
 
 spinal_df_augmented <- spinal_df_augmented |>
@@ -108,9 +110,12 @@ spinal_df_augmented <- spinal_df_augmented |>
   sig_deseq2 = padj_deseq2 < 0.05,
   sig_dexseq = padj_dexseq < 0.05,
   sig_joint = padj_joint < 0.05
-  )
+  ) %>%
+  mutate(sig_joint = replace_na(sig_joint, FALSE))
 
 ```
+
+How many significant genes (FDR adjusted p-values \< 0.05) are found by each of the 3 analysis?
 
 ```{r}
 
@@ -128,5 +133,129 @@ spinal_sig_counts <- c(
   Joint = sum(spinal_df_augmented$sig_joint)
   )
 spinal_sig_counts
+
+```
+
+How many genes are uniquely significant after integration?
+
+```{r}
+ocular_unique_joint <- sum(ocular_df_augmented$sig_joint & 
+                    !ocular_df_augmented$sig_deseq2 & !ocular_df_augmented$sig_dexseq)
+ocular_unique_joint
+
+
+spinal_unique_joint <- sum(spinal_df_augmented$sig_joint & 
+                    !spinal_df_augmented$sig_deseq2 & !spinal_df_augmented$sig_dexseq)
+spinal_unique_joint
+```
+
+Gene-Set-Level-Analysis
+
+```{r}
+
+BP_df = msigdbr(species = "human", category = "C5", subcategory = "BP")
+BP_list = split(BP_df$ensembl_gene, BP_df$gs_name)
+
+MF_df = msigdbr(species = "human", category = "C5", subcategory = "MF")
+MF_list = split(MF_df$ensembl_gene, MF_df$gs_name)
+
+```
+
+```{r}
+
+create_stats <- function(df, pvalue_col, id_col = "gene_id") {
+s <- -log10(df[[pvalue_col]])
+names(s) <- df[[id_col]]
+# In case of duplicate gene IDs, keep the strongest evidence
+s <- tapply(s, names(s), max)
+sort(s, decreasing = TRUE)
+}
+ocular_stats_deseq2 <- create_stats(ocular_df_augmented, "pvalue_deseq2")
+ocular_stats_dexseq <- create_stats(ocular_df_augmented, "pvalue_dexseq")
+ocular_stats_joint <- create_stats(ocular_df_augmented, "joint_pval_fisher")
+
+spinal_stats_deseq2 <- create_stats(spinal_df_augmented, "pvalue_deseq2")
+spinal_stats_dexseq <- create_stats(spinal_df_augmented, "pvalue_dexseq")
+spinal_stats_joint <- create_stats(spinal_df_augmented, "joint_pval_fisher")
+
+```
+
+```{r}
+
+#run_fgsea <- function(stats, pathways, minSize = 15, maxSize = 5000) {
+#fgseaMultilevel(pathways = pathways, stats = stats,
+#scoreType = "pos", minSize = minSize, maxSize = maxSize) |>
+#arrange(padj)
+#}
+
+run_fgsea <- function(stats, pathways, minSize = 15, maxSize = 5000) {
+  stats <- stats[!is.na(stats)]
+  
+  if (any(is.infinite(stats))) {
+    max_val <- max(stats[is.finite(stats)], na.rm = TRUE)
+    min_val <- min(stats[is.finite(stats)], na.rm = TRUE)
+    
+    stats[stats == Inf]  <- max_val * 1.01
+    stats[stats == -Inf] <- min_val * 1.01
+  }
+
+  fgseaMultilevel(pathways = pathways, 
+                  stats = stats,
+                  scoreType = "pos", 
+                  minSize = minSize, 
+                  maxSize = maxSize) |>
+    arrange(padj)
+}
+
+
+
+# Biological Process & Molecular Function
+ocular_fgsea_deseq2 <- run_fgsea(ocular_stats_deseq2, c(BP_list, MF_list))
+ocular_fgsea_dexseq <- run_fgsea(ocular_stats_dexseq, c(BP_list, MF_list))
+ocular_fgsea_joint <- run_fgsea(ocular_stats_joint, c(BP_list, MF_list))
+
+spinal_fgsea_deseq2 <- run_fgsea(spinal_stats_deseq2, c(BP_list, MF_list))
+spinal_fgsea_dexseq <- run_fgsea(spinal_stats_dexseq, c(BP_list, MF_list))
+spinal_fgsea_joint <- run_fgsea(spinal_stats_joint, c(BP_list, MF_list))
+
+```
+
+```{r}
+
+sig_paths <- function(fgsea_res, alpha = 0.05) {
+fgsea_res %>% filter(padj < alpha) %>% pull(pathway) %>% unique()
+}
+
+ocular_sig_sets_deseq2 <- sig_paths(ocular_fgsea_deseq2)
+ocular_sig_sets_dexseq <- sig_paths(ocular_fgsea_dexseq)
+ocular_sig_sets_joint <- sig_paths(ocular_fgsea_joint)
+
+ocular_counts <- c(DESeq2 = length(ocular_sig_sets_deseq2), 
+            DEXSeq = length(ocular_sig_sets_dexseq),
+            Joint = length(ocular_sig_sets_joint))
+ocular_counts
+
+
+spinal_sig_sets_deseq2 <- sig_paths(spinal_fgsea_deseq2)
+spinal_sig_sets_dexseq <- sig_paths(spinal_fgsea_dexseq)
+spinal_sig_sets_joint <- sig_paths(spinal_fgsea_joint)
+
+spinal_counts <- c(DESeq2 = length(spinal_sig_sets_deseq2), 
+            DEXSeq = length(spinal_sig_sets_dexseq),
+            Joint = length(spinal_sig_sets_joint))
+spinal_counts
+
+```
+
+```{r}
+
+ocular_unique_joint <- setdiff(ocular_sig_sets_joint, 
+                               union(ocular_sig_sets_deseq2, ocular_sig_sets_dexseq))
+ocular_unique_joint
+
+
+spinal_unique_joint <- setdiff(spinal_sig_sets_joint,
+                               union(spinal_sig_sets_deseq2, spinal_sig_sets_dexseq))
+spinal_unique_joint
 
 ```
