@@ -74,7 +74,7 @@ iso_id_padj_value_ocular = data.frame("transcript_id" = OcularResult$featureID,
                                        "padj" = OcularResult$padj)
 
 iso_id_padj_value_spinal = data.frame("transcript_id" = SpinalResult$featureID,
-                                       "padj" = dxdResultSpinal$padj)
+                                       "padj" = SpinalResult$padj)
 
 write.csv(iso_id_padj_value_ocular, "data/iso_id_padj_value_ocular.csv")
 write.csv(iso_id_padj_value_spinal, "data/iso_id_padj_value_spinal.csv")
