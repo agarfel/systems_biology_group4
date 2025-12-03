@@ -33,7 +33,7 @@ OcularResult <- dexseq_analysis(isoCm_Ocular, Ocular_Metadata, IsoformInfo)
 ### Compare to Differential Expression:
 
 ```{r}
-alpha <- 0.05  # example threshold
+alpha <- 0.05  # threshold
 
 OcularResultGene <- OcularResult |> 
   as.data.frame() |> 
@@ -58,6 +58,8 @@ OcularResultGene <- OcularResult |>
     padj = p.adjust(pvalue, method = 'fdr')
   ) |>
   filter(!is.na(padj))
+
+head(OcularResultGene)
 ```
 
 ```{r}
@@ -65,7 +67,7 @@ dex_gene <- OcularResultGene |>
   mutate(gene_id,
          dex_padj = padj,
          dex_sig = !is.na(padj) & padj < alpha)
-
+head(dex_gene)
 ```
 
 ```{r}
@@ -80,17 +82,19 @@ OcularDesq <- OcularDesq |>
   rownames_to_column("gene_id") |>
   mutate(deseq_sig = !is.na(padj) & padj < alpha) |>
   filter(!is.na(padj))
+head(OcularDesq)
 ```
 
 ```{r}
 # Gene universe = genes present in BOTH results
 univ <- intersect(dex_gene$gene_id, OcularDesq$gene_id)
-both <- dex_gene %>%
-  filter(gene_id %in% univ) %>%
-  mutate(gene_id, dex_sig) %>%
-  inner_join(OcularDesq %>%
-  filter(gene_id %in% univ) %>%
-  mutate(gene_id, deseq_sig), by = "gene_id")
+both <- dex_gene |> 
+  filter(gene_id %in% univ) |> 
+  mutate(gene_id, dex_sig) |> 
+  inner_join(OcularDesq |> 
+                filter(gene_id %in% univ) |> 
+                mutate(gene_id, deseq_sig),
+             by = "gene_id")
 
 contig_tab <- table(DEXSeq = both$dex_sig, DESeq2 = both$deseq_sig)
 contig_tab
@@ -103,6 +107,12 @@ ft <- fisher.test(contig_tab, alternative = "greater")
 ft
 ```
 
+-   There is **very strong overlap** between genes detected by DEXSeq and DESeq2.
+
+-   When DEXSeq identifies a gene with differential isoform usage, that gene is **much more likely than random** also to show differential expression at the gene level.
+
+-   Power is different across methods—DEXSeq finds many more significant genes (isoform-level testing is more sensitive), but the ones shared with DESeq2 are **highly enriched**.
+
 ### Compare to Differential Expression at Gene-set Level
 
 ```{r}
@@ -112,13 +122,15 @@ BP_list = split(BP_df$ensembl_gene, BP_df$gs_name)
 
 ```{r}
 deseq_names <- sub("\\.\\d+$", "", OcularDesq$gene_id)
-deseq_vals <- OcularDesq$padj
+deseq_vals <- OcularDesq$stat
 stats_deseq <- setNames(deseq_vals, deseq_names)
 
+stats_deseq <- stats_deseq[!is.na(stats_deseq)]
+stats_deseq <- sort(stats_deseq, decreasing = TRUE)
+                        
 dex_names <- sub("\\.\\d+$", "", dex_gene$gene_id)
 dex_vals <- dex_gene$stat
 stats_dex <- setNames(dex_vals, dex_names)
-
 
 stats_dex <- stats_dex[!is.na(stats_dex)]
 stats_dex <- sort(stats_dex, decreasing = TRUE)
@@ -128,24 +140,40 @@ stats_dex <- sort(stats_dex, decreasing = TRUE)
 fg_deseq <- fgseaMultilevel(pathways = BP_list, stats = stats_deseq,
                             minSize = 15, maxSize = 500, scoreType = "std")
 
-
-fg_dex <- fgseaMultilevel(pathways = BP_list, stats = stats_dex,
-                          minSize = 15, maxSize = 500, scoreType = "std")
+dim(fg_deseq)
 ```
 
 ```{r}
-sig_deseq <- fg_deseq %>% filter(padj < alpha) %>% arrange(padj)
-sig_dex <- fg_dex %>% filter(padj < alpha) %>% arrange(padj)
+fg_dex <- fgseaMultilevel(pathways = BP_list, stats = stats_dex,
+                          minSize = 15, maxSize = 500, scoreType = "std")
+
+dim(fg_dex)
+```
+
+```{r}
+sig_deseq <- fg_deseq  |>  filter(padj < alpha)  |>  arrange(padj)
+sig_dex <- fg_dex  |>  filter(padj < alpha) |>  arrange(padj)
+
 n_sig_de <- nrow(sig_deseq)
 n_sig_dx <- nrow(sig_dex)
+
 # shared pathways (by name)
 shared <- intersect(sig_deseq$pathway, sig_dex$pathway)
 n_shared <- length(shared)
+
+n_sig_de
+n_sig_dx
+n_shared
 ```
 
 ```{r}
-de_df <- fg_deseq %>% transmute(pathway, NES_de = NES, padj_de = padj)
-dx_df <- fg_dex %>% transmute(pathway, NES_dx = NES, padj_dx = padj)
+shared
+```
+
+```{r}
+de_df <- fg_deseq |> transmute(pathway, NES_de = NES, padj_de = padj)
+dx_df <- fg_dex |> transmute(pathway, NES_dx = NES, padj_dx = padj)
+
 # Merge on pathway (shared sets only)
 cmp <- inner_join(de_df, dx_df, by = "pathway") %>%
   mutate(sig_cat = case_when(
@@ -155,20 +183,23 @@ cmp <- inner_join(de_df, dx_df, by = "pathway") %>%
     TRUE ~ "None"
   )) %>%
   mutate(sig_cat = factor(sig_cat, levels = c("Both","DESeq2 only","DEXSeq only","None")))
+
+
+cmp
 ```
 
 ```{r}
 # Scatter + smooth
 ggplot(cmp, aes(x = NES_de, y = NES_dx, color = sig_cat)) +
-geom_point(alpha = 0.8) +
-geom_smooth(method = "lm", se = FALSE) +
-labs(
-x = "NES (DESeq2 fgsea)",
-y = "NES (DEXSeq fgsea)",
-color = "Significance",
-title = "NES comparison: DESeq2 vs DEXSeq (fgseaMultilevel)"
-) +
-theme_minimal()
+  geom_point(alpha = 0.8) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    x = "NES (DESeq2 fgsea)",
+    y = "NES (DEXSeq fgsea)",
+    color = "Significance",
+    title = "NES comparison: DESeq2 vs DEXSeq (fgseaMultilevel)"
+  ) +
+  theme_minimal()
 ```
 
 ```{r}
@@ -247,8 +278,8 @@ both <- dex_gene %>%
   filter(gene_id %in% univ) %>%
   mutate(gene_id, dex_sig) %>%
   inner_join(SpinalDesq %>%
-  filter(gene_id %in% univ) %>%
-  mutate(gene_id, deseq_sig), by = "gene_id")
+    filter(gene_id %in% univ) %>%
+    mutate(gene_id, deseq_sig), by = "gene_id")
 
 contig_tab <- table(DEXSeq = both$dex_sig, DESeq2 = both$deseq_sig)
 contig_tab
@@ -270,13 +301,15 @@ BP_list = split(BP_df$ensembl_gene, BP_df$gs_name)
 
 ```{r}
 deseq_names <- sub("\\.\\d+$", "", SpinalDesq$gene_id)
-deseq_vals <- SpinalDesq$padj
+deseq_vals <- SpinalDesq$stat
 stats_deseq <- setNames(deseq_vals, deseq_names)
 
+stats_deseq <- stats_deseq[!is.na(stats_deseq)]
+stats_deseq <- sort(stats_deseq, decreasing = TRUE)
+                        
 dex_names <- sub("\\.\\d+$", "", dex_gene$gene_id)
 dex_vals <- dex_gene$stat
 stats_dex <- setNames(dex_vals, dex_names)
-
 
 stats_dex <- stats_dex[!is.na(stats_dex)]
 stats_dex <- sort(stats_dex, decreasing = TRUE)
@@ -299,6 +332,14 @@ n_sig_dx <- nrow(sig_dex)
 # shared pathways (by name)
 shared <- intersect(sig_deseq$pathway, sig_dex$pathway)
 n_shared <- length(shared)
+
+n_sig_de
+n_sig_dx
+n_shared
+```
+
+```{r}
+shared
 ```
 
 ```{r}
@@ -339,7 +380,7 @@ iso_id_padj_value_ocular = data.frame("transcript_id" = OcularResult$featureID,
                                        "padj" = OcularResult$padj)
 
 iso_id_padj_value_spinal = data.frame("transcript_id" = SpinalResult$featureID,
-                                       "padj" = ResultSpinal$padj)
+                                       "padj" = SpinalResult$padj)
 
 write.csv(iso_id_padj_value_ocular, "data/iso_id_padj_value_ocular.csv")
 write.csv(iso_id_padj_value_spinal, "data/iso_id_padj_value_spinal.csv")
