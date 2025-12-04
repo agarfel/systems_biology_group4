@@ -1,0 +1,69 @@
+---
+title: "04_pval_integration_iso"
+format: html
+editor: visual
+---
+
+## 
+
+```{r}
+library(tidyverse)
+library(dplyr)
+
+```
+
+```{r}
+IsoformInfo <- read_csv("data/isoformInfo.csv")
+spinal_data <- read_csv("data/iso_id_padj_value_spinal.csv")
+ocular_data <- read_csv("data/iso_id_padj_value_ocular.csv")
+```
+
+```{r}
+process_dexseq_results <- function(data_input, annotation_info) {
+  
+  # Run the pipeline based on the provided logic
+  result <- data_input %>%
+    inner_join(annotation_info, by = "transcript_id") %>%
+    as_tibble() %>%
+    
+    # Filter out rows where padj is missing
+    filter(!is.na(padj)) %>%
+    
+    dplyr::select(
+      gene_id,
+      isoform_id = transcript_id,
+      padj
+    ) %>%
+    
+    group_by(gene_id) %>%
+    
+    slice_min(
+      order_by = padj,
+      n = 1,
+      with_ties = FALSE
+    ) %>%
+    
+    ungroup() %>%
+    
+    mutate(
+      padj = p.adjust(padj, method = 'fdr')
+    )
+  
+  return(result)
+}
+
+
+
+dexseqResultGeneOcular <- process_dexseq_results(ocular_data, IsoformInfo)
+print(dexseqResultGeneOcular)
+
+dexseqResultGeneSpinal <- process_dexseq_results(spinal_data, IsoformInfo)
+print(dexseqResultGeneSpinal)
+
+```
+
+```{r}
+write_csv(dexseqResultGeneOcular, "data/ocular_dexseq_gene_results.csv")
+
+write_csv(dexseqResultGeneSpinal, "data/spinal_dexseq_gene_results.csv")
+```
