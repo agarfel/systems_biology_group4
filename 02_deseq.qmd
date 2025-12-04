@@ -139,8 +139,8 @@ nrow(fg_sig_spinal)
 ```
 
 ```{r}
-fg_sig_ocular[1:10]
-fg_sig_spinal[1:10]
+fg_sig_ocular |> filter(padj < 0.05)|> pull(pathway)
+fg_sig_spinal |> filter(padj < 0.05)|> pull(pathway)
 ```
 
 ```{r}
@@ -179,8 +179,8 @@ minSize = 15, maxSize = 500, scoreType = "pos")
 fg_nondir_ocular <- fg_nondir_ocular[order(fg_nondir_ocular$padj), ]
 fg_nondir_spinal <- fg_nondir_spinal[order(fg_nondir_spinal$padj), ]
 
-fg_nondir_ocular[1:10]
-fg_nondir_ocular[1:10]
+fg_nondir_ocular |> filter(padj < 0.05)|> pull(pathway)
+fg_nondir_spinal |> filter(padj < 0.05)|> pull(pathway)
 ```
 
 ```{r}
@@ -197,7 +197,7 @@ to_label_spinal <- fg_volcano_spinal %>% arrange(padj) %>% slice_head(n = 10)
 library(ggrepel)
 library(stringr)
 
-ggplot(fg_volcano_ocular, aes(x = NES, y = mlog10padj, color = sig)) +
+p1 <- ggplot(fg_volcano_ocular, aes(x = NES, y = mlog10padj, color = sig)) +
   geom_point(alpha = 0.8) +
   geom_hline(yintercept = -log10(0.05), linetype = 2) +
   geom_text_repel(data = to_label_ocular,
@@ -209,9 +209,9 @@ ggplot(fg_volcano_ocular, aes(x = NES, y = mlog10padj, color = sig)) +
        color = "Significant", 
        title = "Volcano plot of gene-set enrichment, Ocular") +
   theme_minimal(base_size = 11)
+ggsave("volcano_ocular.png", p1, width = 6, height = 6, dpi = 300)
 
-
-ggplot(fg_volcano_spinal, aes(x = NES, y = mlog10padj, color = sig)) +
+p2 <- ggplot(fg_volcano_spinal, aes(x = NES, y = mlog10padj, color = sig)) +
   geom_point(alpha = 0.8) +
   geom_hline(yintercept = -log10(0.05), linetype = 2) +
   geom_text_repel(data = to_label_spinal,
@@ -223,4 +223,5 @@ ggplot(fg_volcano_spinal, aes(x = NES, y = mlog10padj, color = sig)) +
        color = "Significant", 
        title = "Volcano plot of gene-set enrichment, Spinal") +
   theme_minimal(base_size = 11)
+ggsave("volcano_spinal.png", p2, width = 6, height = 6, dpi = 300)
 ```
