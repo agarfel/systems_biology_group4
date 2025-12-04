@@ -1,6 +1,8 @@
 ---
 title: "DEXSeq Isoform Analysis"
-format: html
+format:
+  html:
+    self-contained: true
 ---
 
 ### Load Libraries
@@ -146,7 +148,7 @@ dim(fg_deseq)
 ```{r}
 fg_dex <- fgseaMultilevel(pathways = BP_list, stats = stats_dex,
                           minSize = 15, maxSize = 500, scoreType = "std")
-
+fg_dex_ocular <- fg_dex
 dim(fg_dex)
 ```
 
@@ -325,6 +327,7 @@ fg_dex <- fgseaMultilevel(pathways = BP_list, stats = stats_dex,
 ```
 
 ```{r}
+fg_dex_spinal <- fg_dex
 sig_deseq <- fg_deseq %>% filter(padj < alpha) %>% arrange(padj)
 sig_dex <- fg_dex %>% filter(padj < alpha) %>% arrange(padj)
 n_sig_de <- nrow(sig_deseq)
@@ -384,4 +387,65 @@ iso_id_padj_value_spinal = data.frame("transcript_id" = SpinalResult$featureID,
 
 write.csv(iso_id_padj_value_ocular, "data/iso_id_padj_value_ocular.csv")
 write.csv(iso_id_padj_value_spinal, "data/iso_id_padj_value_spinal.csv")
+```
+
+# Investigation of Significant Pathways
+
+## Compare Pathways
+
+```{r}
+head(OcularResultGene)
+head(SpinalResultGene)
+```
+
+```{r}
+fg_dex_spinal <- fg_dex_spinal |> mutate(sig_spinal = !is.na(padj) & padj < alpha)
+
+fg_dex_ocular <- fg_dex_ocular |> mutate(sig_ocular = !is.na(padj) & padj < alpha)
+```
+
+```{r}
+both <- fg_dex_spinal |>
+          left_join(fg_dex_ocular, by="pathway") |>
+          select(pathway, sig_spinal, sig_ocular) |> 
+          mutate(sig = case_when(
+            sig_spinal & sig_ocular ~ "Both",
+            sig_spinal ~ "Spinal only",
+            sig_ocular ~ "Ocular only",
+            TRUE ~ "None"
+          )) 
+```
+
+```{r}
+both |> group_by(sig) |> count()
+```
+
+**Pathways enriched in \_ compared to \_ \[Spinal\]**
+
+```{r}
+both |> filter(sig_spinal) |> pull(pathway)
+```
+
+**Pathways enriched in \_ compared to \_ \[Ocular\]**
+
+```{r}
+both |> filter(sig_ocular) |> pull(pathway)
+```
+
+**Pathways enriched only in Ocular Motor Neurons**
+
+```{r}
+both |> filter(sig=='Ocular only') |> pull(pathway)
+```
+
+**Pathways enriched only in Spinal Motor Neurons**
+
+```{r}
+both |> filter(sig=='Spinal only') |> pull(pathway)
+```
+
+**Pathways enriched in Both Motor Neurons**
+
+```{r}
+both |> filter(sig=='Both') |> pull(pathway)
 ```
