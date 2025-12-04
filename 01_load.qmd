@@ -47,7 +47,7 @@ isoInfo <- read_rds(
   )
 )
 
-isoInfo <- isoInfo[ match(isoCm_Ocular$transcript_id, isoInfo$transcript_id), ]
+isoInfo <- isoInfo[ match(rownames(isoCm_Ocular), isoInfo$transcript_id), ]
 
 ```
 

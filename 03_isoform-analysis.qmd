@@ -79,4 +79,3 @@ iso_id_padj_value_spinal = data.frame("transcript_id" = SpinalResult$featureID,
 write.csv(iso_id_padj_value_ocular, "data/iso_id_padj_value_ocular.csv")
 write.csv(iso_id_padj_value_spinal, "data/iso_id_padj_value_spinal.csv")
 ```
-
