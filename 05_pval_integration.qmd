@@ -8,7 +8,126 @@ format: html
 library(tidyverse)
 library(fgsea)
 library(msigdbr)
+library(DEXSeq)
 load(file='/home/projects/22140/exercise7_data.Rdata')
+
+```
+
+```{r}
+
+dexseq_analysis <- function(isoCm, Metadata, IsoformInfo){
+  n_samples <- ncol(isoCm)
+  isoCm <- isoCm[rowSums(isoCm >= 10) >= (0.5 * n_samples), ]
+  isoforms <- rownames(isoCm)
+  IsoformInfo <- IsoformInfo |> filter(transcript_id %in% isoforms)
+  IsoformInfo <- IsoformInfo |> distinct(transcript_id, .keep_all = TRUE)
+  IsoformInfo <- IsoformInfo[match(rownames(isoCm),
+                                   IsoformInfo$transcript_id),]
+  stopifnot( all(rownames(isoCm) == IsoformInfo$transcript_id) )
+  
+  
+  Metadata$mutation <- factor(Metadata$mutation)
+  
+  dxdSubset <- DEXSeqDataSet(
+    countData = isoCm,
+    sampleData = Metadata,
+    design = ~ mutation + exon + exon:mutation,
+    featureID = IsoformInfo$transcript_id,
+    groupID = IsoformInfo$gene_id
+  )
+  
+  dxdSubset <- estimateSizeFactors(dxdSubset)
+  dxdSubset <- estimateDispersions(dxdSubset)
+  dxdSubset <- testForDEU(
+    dxdSubset,
+    fullModel = ~ exon + exon:mutation,
+    reducedModel = ~ exon 
+  )
+  dxdSubset <- estimateExonFoldChanges(dxdSubset, fitExpToVar = "mutation")
+  dxdResult <- DEXSeqResults(dxdSubset)
+  return(dxdResult)
+}
+
+```
+
+```{r}
+
+isoCm_Ocular <- read.csv("data/OcularIsoformCountMatrix.csv", row.names = 1)
+Ocular_Metadata <- read.csv("data/OcularSampleMetadata.csv", row.names = 1)
+IsoformInfo <- read.csv("data/isoformInfo.csv")
+
+OcularResult <- dexseq_analysis(isoCm_Ocular, Ocular_Metadata, IsoformInfo)
+
+### Compare to Differential Expression:
+
+alpha <- 0.05  # threshold
+
+OcularResultGene <- OcularResult |> 
+  as.data.frame() |> 
+  as_tibble() |>
+  filter(!is.na(pvalue)) |> 
+  select(
+    gene_id = groupID,
+    isoform_id = featureID,
+    stat,
+    log2FC = log2fold_SOD1_C9ORF72,
+    pvalue,
+    padj
+  ) |> 
+  group_by(gene_id) |> 
+  slice_min(
+    order_by = pvalue,
+    n = 1,
+    with_ties = FALSE
+  )  |> 
+  ungroup()  |> 
+  mutate(
+    padj = p.adjust(pvalue, method = 'fdr')
+  ) |>
+  filter(!is.na(padj))
+
+head(OcularResultGene)
+
+```
+
+```{r}
+
+
+isoCm_Spinal <- read.csv("data/SpinalIsoformCountMatrix.csv", row.names = 1)
+Spinal_Metadata <- read.csv("data/SpinalSampleMetadata.csv", row.names = 1)
+IsoformInfo <- read.csv("data/isoformInfo.csv")
+
+SpinalResult <- dexseq_analysis(isoCm_Spinal, Spinal_Metadata, IsoformInfo)
+
+### Compare to Differential Expression:
+
+alpha <- 0.05  # threshold
+
+SpinalResultGene <- SpinalResult |> 
+  as.data.frame() |> 
+  as_tibble() |>
+  filter(!is.na(pvalue)) |> 
+  select(
+    gene_id = groupID,
+    isoform_id = featureID,
+    stat,
+    log2FC = log2fold_SOD1_C9ORF72,
+    pvalue,
+    padj
+  ) |> 
+  group_by(gene_id) |> 
+  slice_min(
+    order_by = pvalue,
+    n = 1,
+    with_ties = FALSE
+  )  |> 
+  ungroup()  |> 
+  mutate(
+    padj = p.adjust(pvalue, method = 'fdr')
+  ) |>
+  filter(!is.na(padj))
+
+head(SpinalResultGene)
 
 ```
 
@@ -33,47 +152,70 @@ gene_id_isoform_id = gene_id_isoform_id[, c("gene_id", "transcript_id")]
 ```{r}
 
 # mapping pvalues between gene ids and isoform ids
-ocular_df <- gene_id_isoform_id %>%
+ocular_df_raw <- gene_id_isoform_id %>%
   select(gene_id, transcript_id) %>%
   left_join(gene_id_padj_value_ocular, by = "gene_id") %>%
   left_join(iso_id_padj_value_ocular, by = "transcript_id")
 
-ocular_df <- ocular_df %>%
-  distinct(gene_id, .keep_all = TRUE) %>%
-  select(gene_id, padj.x, padj.y) %>%
+ocular_df <- OcularResultGene %>%
+  select(gene_id, isoform_id) %>%
+  left_join(ocular_df_raw, by = c("gene_id" = "gene_id", "isoform_id" = "transcript_id")) %>%
+  select(gene_id, isoform_id, padj.x, padj.y) %>%
   rename(
         pvalue_deseq2 = padj.x,
         pvalue_dexseq = padj.y
-        ) %>%
-  mutate(across(everything(), ~ replace_na(.x, 0)))
+        )
 
 
-spinal_df <- gene_id_isoform_id %>%
+#ocular_df <- ocular_df %>%
+#  distinct(gene_id, .keep_all = TRUE) %>%
+#  select(gene_id, padj.x, padj.y) %>%
+#  rename(
+#        pvalue_deseq2 = padj.x,
+#        pvalue_dexseq = padj.y
+#        ) %>%
+#  mutate(across(everything(), ~ replace_na(.x, 1)))
+
+
+spinal_df_raw <- gene_id_isoform_id %>%
   select(gene_id, transcript_id) %>%
   left_join(gene_id_padj_value_spinal, by = "gene_id") %>%
   left_join(iso_id_padj_value_spinal, by = "transcript_id")
 
-spinal_df <- spinal_df %>%
-  distinct(gene_id, .keep_all = TRUE) %>%
-  select(gene_id, padj.x, padj.y) %>%
+spinal_df <- SpinalResultGene %>%
+  select(gene_id, isoform_id) %>%
+  left_join(ocular_df_raw, by = c("gene_id" = "gene_id", "isoform_id" = "transcript_id")) %>%
+  select(gene_id, isoform_id, padj.x, padj.y) %>%
   rename(
         pvalue_deseq2 = padj.x,
         pvalue_dexseq = padj.y
-        ) %>%
-  #
-  #
-  #
-  # this removes all NAs check it again if its correct
-  mutate(across(everything(), ~ replace_na(.x, 0)))
+        )
 
+
+head(spinal_df)
+head(ocular_df)
 ```
 
 ```{r}
 
+safe_sumlog <- function(p1, p2) {
+  # Combine and remove NAs
+  clean_p <- na.omit(c(p1, p2))
+  
+  # Check how many valid p-values we have
+  if (length(clean_p) == 0) {
+    return(NA_real_)       # Both were NA
+  } else if (length(clean_p) == 1) {
+    return(as.numeric(clean_p)) # Only one valid (return it directly to avoid warning)
+  } else {
+    return(metap::sumlog(clean_p)$p) # Both valid, run Fisher's method
+  }
+}
+
 ocular_df_augmented <- ocular_df |>
   rowwise() |>
   mutate(
-  joint_pval_fisher = metap::sumlog(c(pvalue_deseq2, pvalue_dexseq))$p
+    joint_pval_fisher = safe_sumlog(pvalue_deseq2, pvalue_dexseq)
   ) |>
   ungroup()
 
@@ -81,7 +223,7 @@ ocular_df_augmented <- ocular_df |>
 spinal_df_augmented <- spinal_df |>
   rowwise() |>
   mutate(
-  joint_pval_fisher = metap::sumlog(c(pvalue_deseq2, pvalue_dexseq))$p
+    joint_pval_fisher = safe_sumlog(pvalue_deseq2, pvalue_dexseq)
   ) |>
   ungroup()
 
@@ -91,27 +233,44 @@ spinal_df_augmented <- spinal_df |>
 
 ocular_df_augmented <- ocular_df_augmented |>
   mutate(
-  padj_deseq2 = p.adjust(pvalue_deseq2, method = "BH"),
-  padj_dexseq = p.adjust(pvalue_dexseq, method = "BH"),
-  padj_joint = p.adjust(joint_pval_fisher, method = "BH"),
-  sig_deseq2 = padj_deseq2 < 0.05,
-  sig_dexseq = padj_dexseq < 0.05,
-  sig_joint = padj_joint < 0.05
+    # 1. Calculate BH-adjusted p-values
+    padj_deseq2 = p.adjust(pvalue_deseq2, method = "BH"),
+    padj_dexseq = p.adjust(pvalue_dexseq, method = "BH"),
+    padj_joint  = p.adjust(joint_pval_fisher, method = "BH"),
+    
+    # 2. Define significance (Result is TRUE, FALSE, or NA)
+    sig_deseq2 = padj_deseq2 < 0.05,
+    sig_dexseq = padj_dexseq < 0.05,
+    sig_joint  = padj_joint  < 0.05
   ) %>%
-  mutate(sig_joint = replace_na(sig_joint, FALSE))
-
+  # 3. CRITICAL: Replace NAs with FALSE for ALL columns
+  # (If p-value is NA, it is definitely not significant)
+  mutate(
+    sig_deseq2 = replace_na(sig_deseq2, FALSE),
+    sig_dexseq = replace_na(sig_dexseq, FALSE),
+    sig_joint  = replace_na(sig_joint, FALSE)
+  )
 
 
 spinal_df_augmented <- spinal_df_augmented |>
   mutate(
-  padj_deseq2 = p.adjust(pvalue_deseq2, method = "BH"),
-  padj_dexseq = p.adjust(pvalue_dexseq, method = "BH"),
-  padj_joint = p.adjust(joint_pval_fisher, method = "BH"),
-  sig_deseq2 = padj_deseq2 < 0.05,
-  sig_dexseq = padj_dexseq < 0.05,
-  sig_joint = padj_joint < 0.05
+    # 1. Calculate BH-adjusted p-values
+    padj_deseq2 = p.adjust(pvalue_deseq2, method = "BH"),
+    padj_dexseq = p.adjust(pvalue_dexseq, method = "BH"),
+    padj_joint  = p.adjust(joint_pval_fisher, method = "BH"),
+    
+    # 2. Define significance (Result is TRUE, FALSE, or NA)
+    sig_deseq2 = padj_deseq2 < 0.05,
+    sig_dexseq = padj_dexseq < 0.05,
+    sig_joint  = padj_joint  < 0.05
   ) %>%
-  mutate(sig_joint = replace_na(sig_joint, FALSE))
+  # 3. CRITICAL: Replace NAs with FALSE for ALL columns
+  # (If p-value is NA, it is definitely not significant)
+  mutate(
+    sig_deseq2 = replace_na(sig_deseq2, FALSE),
+    sig_dexseq = replace_na(sig_dexseq, FALSE),
+    sig_joint  = replace_na(sig_joint, FALSE)
+  )
 
 ```
 
@@ -119,18 +278,18 @@ How many significant genes (FDR adjusted p-values \< 0.05) are found by each of 
 
 ```{r}
 
+# 4. Count (na.rm is now redundant but good practice)
 ocular_sig_counts <- c(
-  DESeq2 = sum(ocular_df_augmented$sig_deseq2),
-  DEXSeq = sum(ocular_df_augmented$sig_dexseq),
-  Joint = sum(ocular_df_augmented$sig_joint)
-  )
+  DESeq2 = sum(ocular_df_augmented$sig_deseq2, na.rm = TRUE),
+  DEXSeq = sum(ocular_df_augmented$sig_dexseq, na.rm = TRUE),
+  Joint  = sum(ocular_df_augmented$sig_joint,  na.rm = TRUE)
+)
 ocular_sig_counts
 
-
 spinal_sig_counts <- c(
-  DESeq2 = sum(spinal_df_augmented$sig_deseq2),
-  DEXSeq = sum(spinal_df_augmented$sig_dexseq),
-  Joint = sum(spinal_df_augmented$sig_joint)
+  DESeq2 = sum(spinal_df_augmented$sig_deseq2, na.rm = TRUE),
+  DEXSeq = sum(spinal_df_augmented$sig_dexseq, na.rm = TRUE),
+  Joint = sum(spinal_df_augmented$sig_joint, na.rm = TRUE)
   )
 spinal_sig_counts
 
