@@ -1,6 +1,8 @@
 ---
 title: "DEXSeq Isoform Analysis"
-format: html
+format:
+  html:
+    self-contained: true
 ---
 
 ### Load Libraries
@@ -9,41 +11,13 @@ format: html
 #| message: false
 library(DEXSeq)
 library(tidyverse)
+library(dplyr)
+library(msigdbr)
+library(fgsea)
 ```
 
 ```{r}
-dexseq_analysis <- function(isoCm, Metadata, IsoformInfo){
-  n_samples <- ncol(isoCm)
-  isoCm <- isoCm[rowSums(isoCm >= 10) >= (0.5 * n_samples), ]
-  isoforms <- rownames(isoCm)
-  IsoformInfo <- IsoformInfo |> filter(transcript_id %in% isoforms)
-  IsoformInfo <- IsoformInfo |> distinct(transcript_id, .keep_all = TRUE)
-  IsoformInfo <- IsoformInfo[match(rownames(isoCm),
-                                   IsoformInfo$transcript_id),]
-  stopifnot( all(rownames(isoCm) == IsoformInfo$transcript_id) )
-  
-  
-  Metadata$mutation <- factor(Metadata$mutation)
-  
-  dxdSubset <- DEXSeqDataSet(
-      countData = isoCm,
-      sampleData = Metadata,
-      design = ~ mutation + exon + exon:mutation,
-      featureID = IsoformInfo$transcript_id,
-      groupID = IsoformInfo$gene_id
-  )
-  
-  dxdSubset <- estimateSizeFactors(dxdSubset)
-  dxdSubset <- estimateDispersions(dxdSubset)
-  dxdSubset <- testForDEU(
-      dxdSubset,
-      fullModel = ~ exon + exon:mutation,
-      reducedModel = ~ exon 
-    )
-  dxdSubset <- estimateExonFoldChanges(dxdSubset, fitExpToVar = "mutation")
-  dxdResult <- DEXSeqResults(dxdSubset)
-  return(dxdResult)
-}
+source("99_proj_func.R")
 ```
 
 # Ocular Motor Neurons
@@ -52,8 +26,186 @@ dexseq_analysis <- function(isoCm, Metadata, IsoformInfo){
 isoCm_Ocular <- read.csv("data/OcularIsoformCountMatrix.csv", row.names = 1)
 Ocular_Metadata <- read.csv("data/OcularSampleMetadata.csv", row.names = 1)
 IsoformInfo <- read.csv("data/isoformInfo.csv")
+```
 
+```{r}
 OcularResult <- dexseq_analysis(isoCm_Ocular, Ocular_Metadata, IsoformInfo)
+```
+
+### Compare to Differential Expression:
+
+```{r}
+alpha <- 0.05  # threshold
+
+OcularResultGene <- OcularResult |> 
+  as.data.frame() |> 
+  as_tibble() |>
+  filter(!is.na(pvalue)) |> 
+  select(
+    gene_id = groupID,
+    isoform_id = featureID,
+    stat,
+    log2FC = log2fold_SOD1_C9ORF72,
+    pvalue,
+    padj
+  ) |> 
+  group_by(gene_id) |> 
+  slice_min(
+    order_by = pvalue,
+    n = 1,
+    with_ties = FALSE
+  )  |> 
+  ungroup()  |> 
+  mutate(
+    padj = p.adjust(pvalue, method = 'fdr')
+  ) |>
+  filter(!is.na(padj))
+
+head(OcularResultGene)
+```
+
+```{r}
+dex_gene <- OcularResultGene |> 
+  mutate(gene_id,
+         dex_padj = padj,
+         dex_sig = !is.na(padj) & padj < alpha)
+head(dex_gene)
+```
+
+```{r}
+load("data/Ocular_dseqResult.RData")
+OcularDesq <- res_ocular
+OcularDesq$padj <- as.numeric(OcularDesq$padj)
+```
+
+```{r}
+OcularDesq <- OcularDesq |>
+  as.data.frame() |> 
+  rownames_to_column("gene_id") |>
+  mutate(deseq_sig = !is.na(padj) & padj < alpha) |>
+  filter(!is.na(padj))
+head(OcularDesq)
+```
+
+```{r}
+# Gene universe = genes present in BOTH results
+univ <- intersect(dex_gene$gene_id, OcularDesq$gene_id)
+both <- dex_gene |> 
+  filter(gene_id %in% univ) |> 
+  mutate(gene_id, dex_sig) |> 
+  inner_join(OcularDesq |> 
+                filter(gene_id %in% univ) |> 
+                mutate(gene_id, deseq_sig),
+             by = "gene_id")
+
+contig_tab <- table(DEXSeq = both$dex_sig, DESeq2 = both$deseq_sig)
+contig_tab
+```
+
+**Fisher Test**
+
+```{r}
+ft <- fisher.test(contig_tab, alternative = "greater")
+ft
+```
+
+-   There is **very strong overlap** between genes detected by DEXSeq and DESeq2.
+
+-   When DEXSeq identifies a gene with differential isoform usage, that gene is **much more likely than random** also to show differential expression at the gene level.
+
+-   Power is different across methods—DEXSeq finds many more significant genes (isoform-level testing is more sensitive), but the ones shared with DESeq2 are **highly enriched**.
+
+### Compare to Differential Expression at Gene-set Level
+
+```{r}
+BP_df = msigdbr(species = "human", category = "C5", subcategory = "BP")
+BP_list = split(BP_df$ensembl_gene, BP_df$gs_name)
+```
+
+```{r}
+deseq_names <- sub("\\.\\d+$", "", OcularDesq$gene_id)
+deseq_vals <- OcularDesq$stat
+stats_deseq <- setNames(deseq_vals, deseq_names)
+
+stats_deseq <- stats_deseq[!is.na(stats_deseq)]
+stats_deseq <- sort(stats_deseq, decreasing = TRUE)
+                        
+dex_names <- sub("\\.\\d+$", "", dex_gene$gene_id)
+dex_vals <- dex_gene$stat
+stats_dex <- setNames(dex_vals, dex_names)
+
+stats_dex <- stats_dex[!is.na(stats_dex)]
+stats_dex <- sort(stats_dex, decreasing = TRUE)
+```
+
+```{r}
+fg_deseq <- fgseaMultilevel(pathways = BP_list, stats = stats_deseq,
+                            minSize = 15, maxSize = 500, scoreType = "std")
+
+dim(fg_deseq)
+```
+
+```{r}
+fg_dex <- fgseaMultilevel(pathways = BP_list, stats = stats_dex,
+                          minSize = 15, maxSize = 500, scoreType = "std")
+fg_dex_ocular <- fg_dex
+dim(fg_dex)
+```
+
+```{r}
+sig_deseq <- fg_deseq  |>  filter(padj < alpha)  |>  arrange(padj)
+sig_dex <- fg_dex  |>  filter(padj < alpha) |>  arrange(padj)
+
+n_sig_de <- nrow(sig_deseq)
+n_sig_dx <- nrow(sig_dex)
+
+# shared pathways (by name)
+shared <- intersect(sig_deseq$pathway, sig_dex$pathway)
+n_shared <- length(shared)
+
+n_sig_de
+n_sig_dx
+n_shared
+```
+
+```{r}
+shared
+```
+
+```{r}
+de_df <- fg_deseq |> transmute(pathway, NES_de = NES, padj_de = padj)
+dx_df <- fg_dex |> transmute(pathway, NES_dx = NES, padj_dx = padj)
+
+# Merge on pathway (shared sets only)
+cmp <- inner_join(de_df, dx_df, by = "pathway") %>%
+  mutate(sig_cat = case_when(
+    padj_de < alpha & padj_dx < alpha ~ "Both",
+    padj_de < alpha & padj_dx >= alpha ~ "DESeq2 only",
+    padj_de >= alpha & padj_dx < alpha ~ "DEXSeq only",
+    TRUE ~ "None"
+  )) %>%
+  mutate(sig_cat = factor(sig_cat, levels = c("Both","DESeq2 only","DEXSeq only","None")))
+
+
+cmp
+```
+
+```{r}
+# Scatter + smooth
+ggplot(cmp, aes(x = NES_de, y = NES_dx, color = sig_cat)) +
+  geom_point(alpha = 0.8) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    x = "NES (DESeq2 fgsea)",
+    y = "NES (DEXSeq fgsea)",
+    color = "Significance",
+    title = "NES comparison: DESeq2 vs DEXSeq (fgseaMultilevel)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+save(OcularResult, file="data/Ocular_dxdResult.RData")
 ```
 
 # Spinal Motor Neurons
@@ -64,8 +216,165 @@ OcularResult <- dexseq_analysis(isoCm_Ocular, Ocular_Metadata, IsoformInfo)
 isoCm_Spinal <- read.csv("data/SpinalIsoformCountMatrix.csv", row.names = 1)
 Spinal_Metadata <- read.csv("data/SpinalSampleMetadata.csv", row.names = 1)
 IsoformInfo <- read.csv("data/isoformInfo.csv")
-SpinalResult <- dexseq_analysis(isoCm_Spinal, Spinal_Metadata, IsoformInfo)
+```
 
+```{r}
+SpinalResult <- dexseq_analysis(isoCm_Spinal, Spinal_Metadata, IsoformInfo)
+```
+
+### Compare to Differential Expression:
+
+```{r}
+alpha <- 0.05  # example threshold
+
+SpinalResultGene <- SpinalResult |> 
+  as.data.frame() |> 
+  as_tibble() |>
+  filter(!is.na(pvalue)) |> 
+  select(
+    gene_id = groupID,
+    isoform_id = featureID,
+    stat,
+    log2FC = log2fold_SOD1_C9ORF72,
+    pvalue,
+    padj
+  ) |> 
+  group_by(gene_id) |> 
+  slice_min(
+    order_by = pvalue,
+    n = 1,
+    with_ties = FALSE
+  )  |> 
+  ungroup()  |> 
+  mutate(
+    padj = p.adjust(pvalue, method = 'fdr')
+  ) |>
+  filter(!is.na(padj))
+```
+
+```{r}
+dex_gene <- SpinalResultGene |> 
+  mutate(gene_id,
+         dex_padj = padj,
+         dex_sig = !is.na(padj) & padj < alpha)
+```
+
+```{r}
+load("data/Spinal_dseqResult.RData")
+SpinalDesq <- res_spinal
+SpinalDesq$padj <- as.numeric(SpinalDesq$padj)
+```
+
+```{r}
+SpinalDesq <- SpinalDesq |>
+  as.data.frame() |> 
+  rownames_to_column("gene_id") |>
+  mutate(deseq_sig = !is.na(padj) & padj < alpha) |>
+  filter(!is.na(padj))
+```
+
+```{r}
+# Gene universe = genes present in BOTH results
+univ <- intersect(dex_gene$gene_id, SpinalDesq$gene_id)
+both <- dex_gene %>%
+  filter(gene_id %in% univ) %>%
+  mutate(gene_id, dex_sig) %>%
+  inner_join(SpinalDesq %>%
+    filter(gene_id %in% univ) %>%
+    mutate(gene_id, deseq_sig), by = "gene_id")
+
+contig_tab <- table(DEXSeq = both$dex_sig, DESeq2 = both$deseq_sig)
+contig_tab
+```
+
+**Fisher Test**
+
+```{r}
+ft <- fisher.test(contig_tab, alternative = "greater")
+ft
+```
+
+### Compare to Differential Expression at Gene-set Level
+
+```{r}
+BP_df = msigdbr(species = "human", category = "C5", subcategory = "BP")
+BP_list = split(BP_df$ensembl_gene, BP_df$gs_name)
+```
+
+```{r}
+deseq_names <- sub("\\.\\d+$", "", SpinalDesq$gene_id)
+deseq_vals <- SpinalDesq$stat
+stats_deseq <- setNames(deseq_vals, deseq_names)
+
+stats_deseq <- stats_deseq[!is.na(stats_deseq)]
+stats_deseq <- sort(stats_deseq, decreasing = TRUE)
+                        
+dex_names <- sub("\\.\\d+$", "", dex_gene$gene_id)
+dex_vals <- dex_gene$stat
+stats_dex <- setNames(dex_vals, dex_names)
+
+stats_dex <- stats_dex[!is.na(stats_dex)]
+stats_dex <- sort(stats_dex, decreasing = TRUE)
+```
+
+```{r}
+fg_deseq <- fgseaMultilevel(pathways = BP_list, stats = stats_deseq,
+                            minSize = 15, maxSize = 500, scoreType = "std")
+
+
+fg_dex <- fgseaMultilevel(pathways = BP_list, stats = stats_dex,
+                          minSize = 15, maxSize = 500, scoreType = "std")
+```
+
+```{r}
+fg_dex_spinal <- fg_dex
+sig_deseq <- fg_deseq %>% filter(padj < alpha) %>% arrange(padj)
+sig_dex <- fg_dex %>% filter(padj < alpha) %>% arrange(padj)
+n_sig_de <- nrow(sig_deseq)
+n_sig_dx <- nrow(sig_dex)
+# shared pathways (by name)
+shared <- intersect(sig_deseq$pathway, sig_dex$pathway)
+n_shared <- length(shared)
+
+n_sig_de
+n_sig_dx
+n_shared
+```
+
+```{r}
+shared
+```
+
+```{r}
+de_df <- fg_deseq %>% transmute(pathway, NES_de = NES, padj_de = padj)
+dx_df <- fg_dex %>% transmute(pathway, NES_dx = NES, padj_dx = padj)
+# Merge on pathway (shared sets only)
+cmp <- inner_join(de_df, dx_df, by = "pathway") %>%
+  mutate(sig_cat = case_when(
+    padj_de < alpha & padj_dx < alpha ~ "Both",
+    padj_de < alpha & padj_dx >= alpha ~ "DESeq2 only",
+    padj_de >= alpha & padj_dx < alpha ~ "DEXSeq only",
+    TRUE ~ "None"
+  )) %>%
+  mutate(sig_cat = factor(sig_cat, levels = c("Both","DESeq2 only","DEXSeq only","None")))
+```
+
+```{r}
+# Scatter + smooth
+ggplot(cmp, aes(x = NES_de, y = NES_dx, color = sig_cat)) +
+geom_point(alpha = 0.8) +
+geom_smooth(method = "lm", se = FALSE) +
+labs(
+x = "NES (DESeq2 fgsea)",
+y = "NES (DEXSeq fgsea)",
+color = "Significance",
+title = "NES comparison: DESeq2 vs DEXSeq (fgseaMultilevel)"
+) +
+theme_minimal()
+```
+
+```{r}
+save(SpinalResult, file="data/Spinal_dxdResult.RData")
 ```
 
 ```{r}
@@ -74,8 +383,69 @@ iso_id_padj_value_ocular = data.frame("transcript_id" = OcularResult$featureID,
                                        "padj" = OcularResult$padj)
 
 iso_id_padj_value_spinal = data.frame("transcript_id" = SpinalResult$featureID,
-                                       "padj" = dxdResultSpinal$padj)
+                                       "padj" = SpinalResult$padj)
 
 write.csv(iso_id_padj_value_ocular, "data/iso_id_padj_value_ocular.csv")
 write.csv(iso_id_padj_value_spinal, "data/iso_id_padj_value_spinal.csv")
+```
+
+# Investigation of Significant Pathways
+
+## Compare Pathways
+
+```{r}
+head(OcularResultGene)
+head(SpinalResultGene)
+```
+
+```{r}
+fg_dex_spinal <- fg_dex_spinal |> mutate(sig_spinal = !is.na(padj) & padj < alpha)
+
+fg_dex_ocular <- fg_dex_ocular |> mutate(sig_ocular = !is.na(padj) & padj < alpha)
+```
+
+```{r}
+both <- fg_dex_spinal |>
+          left_join(fg_dex_ocular, by="pathway") |>
+          select(pathway, sig_spinal, sig_ocular) |> 
+          mutate(sig = case_when(
+            sig_spinal & sig_ocular ~ "Both",
+            sig_spinal ~ "Spinal only",
+            sig_ocular ~ "Ocular only",
+            TRUE ~ "None"
+          )) 
+```
+
+```{r}
+both |> group_by(sig) |> count()
+```
+
+**Pathways enriched in \_ compared to \_ \[Spinal\]**
+
+```{r}
+both |> filter(sig_spinal) |> pull(pathway)
+```
+
+**Pathways enriched in \_ compared to \_ \[Ocular\]**
+
+```{r}
+both |> filter(sig_ocular) |> pull(pathway)
+```
+
+**Pathways enriched only in Ocular Motor Neurons**
+
+```{r}
+both |> filter(sig=='Ocular only') |> pull(pathway)
+```
+
+**Pathways enriched only in Spinal Motor Neurons**
+
+```{r}
+both |> filter(sig=='Spinal only') |> pull(pathway)
+```
+
+**Pathways enriched in Both Motor Neurons**
+
+```{r}
+both |> filter(sig=='Both') |> pull(pathway)
 ```
