@@ -323,12 +323,32 @@ MF_list = split(MF_df$ensembl_gene, MF_df$gs_name)
 ```{r}
 
 create_stats <- function(df, pvalue_col, id_col = "gene_id") {
-s <- -log10(df[[pvalue_col]])
-names(s) <- df[[id_col]]
-# In case of duplicate gene IDs, keep the strongest evidence
-s <- tapply(s, names(s), max)
-sort(s, decreasing = TRUE)
+  s <- suppressWarnings(-log10(df[[pvalue_col]]))
+  names(s) <- df[[id_col]]
+  
+  safe_max <- function(x) {
+    clean_x <- x[!is.na(x)]
+    if (length(clean_x) == 0) return(NA_real_)
+    return(max(clean_x))
+  }
+  s_clean <- tapply(s, names(s), safe_max)
+  
+  s_clean <- s_clean[!is.na(s_clean)]
+  
+  # 4. Handle Infinity
+  if (any(is.infinite(s_clean))) {
+    finite_max <- max(s_clean[is.finite(s_clean)], na.rm = TRUE)
+    s_clean[is.infinite(s_clean)] <- finite_max * 1.01
+  }
+  
+  set.seed(42) # Set seed for reproducibility
+  jitter <- runif(length(s_clean), min = 0, max = 1e-9)
+  s_clean <- s_clean + jitter
+  
+  # 6. Sort
+  sort(s_clean, decreasing = TRUE)
 }
+
 ocular_stats_deseq2 <- create_stats(ocular_df_augmented, "pvalue_deseq2")
 ocular_stats_dexseq <- create_stats(ocular_df_augmented, "pvalue_dexseq")
 ocular_stats_joint <- create_stats(ocular_df_augmented, "joint_pval_fisher")
